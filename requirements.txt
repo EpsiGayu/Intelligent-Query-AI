@@ -1,7 +1,7 @@
 Flask
 gunicorn
 python-dotenv
-google-generativeai
+google-genai
 chromadb
 sentence-transformers
 pypdf
