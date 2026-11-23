@@ -195,8 +195,18 @@ def add_document(file_path):
         for index in range(len(chunks))
     ]
 
-    # Step 5: Store in ChromaDB
-    print("UPLOAD: Saving to ChromaDB...", flush=True)
+    
+# Step 5: Store in ChromaDB
+print("UPLOAD: Checking ChromaDB...", flush=True)
+
+try:
+    print(
+        "UPLOAD: Current collection count:",
+        collection.count(),
+        flush=True
+    )
+
+    print("UPLOAD: Calling ChromaDB add...", flush=True)
 
     collection.add(
         ids=ids,
@@ -204,6 +214,23 @@ def add_document(file_path):
         embeddings=embeddings,
         metadatas=metadata
     )
+
+    print("UPLOAD: ChromaDB add completed!", flush=True)
+
+    print(
+        "UPLOAD: New collection count:",
+        collection.count(),
+        flush=True
+    )
+
+except Exception as error:
+    print(
+        "UPLOAD: ChromaDB ERROR:",
+        repr(error),
+        flush=True
+    )
+    raise
+
 
     print(
         f"UPLOAD: Completed in {time.time() - start_time:.2f} seconds",
