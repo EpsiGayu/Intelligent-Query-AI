@@ -1,6 +1,9 @@
-
 import os
 import sqlite3
+import requests
+import hmac
+import hashlib
+import re
 
 from datetime import datetime
 from functools import wraps
@@ -24,18 +27,11 @@ from werkzeug.utils import secure_filename
 
 from dotenv import load_dotenv
 
-# Load environment variables before importing other modules
-load_dotenv()
-
-# Import project modules
 from agents import run_agents
 from rag import add_document
-from whatsapp import whatsapp_bp
 
 
-# ==========================================
-# FLASK APPLICATION CONFIGURATION
-# ==========================================
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -43,14 +39,6 @@ app.secret_key = os.getenv(
     "FLASK_SECRET_KEY",
     "development-secret"
 )
-
-# Register WhatsApp blueprint exactly once
-app.register_blueprint(whatsapp_bp)
-
-
-# ==========================================
-# APPLICATION SETTINGS
-# ==========================================
 
 UPLOAD_FOLDER = "uploads"
 
@@ -64,13 +52,13 @@ ALLOWED_EXTENSIONS = {
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
-# ==========================================
 # DATABASE
-# ==========================================
 
 def get_db():
 
-    connection = sqlite3.connect("database.db")
+    connection = sqlite3.connect(
+        "database.db"
+    )
 
     connection.row_factory = sqlite3.Row
 
@@ -85,9 +73,23 @@ def initialize_database():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE,
-            password TEXT
+            password TEXT,
+            full_name TEXT,
+            email TEXT
         )
     """)
+
+    # Safe migration for existing database.db files. Existing user rows
+    # and their conversation/memory IDs are preserved.
+    user_columns = {
+        row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if "full_name" not in user_columns:
+        db.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
+    if "email" not in user_columns:
+        db.execute("ALTER TABLE users ADD COLUMN email TEXT")
+
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
 
     db.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
@@ -107,6 +109,23 @@ def initialize_database():
         )
     """)
 
+    # WhatsApp users have independent memory, keyed by their phone number.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_memories (
+            phone_number TEXT PRIMARY KEY,
+            memory TEXT NOT NULL DEFAULT ''
+        )
+    """)
+
+    # Prevent Meta webhook retries from processing the same message twice.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_processed_messages (
+            message_id TEXT PRIMARY KEY,
+            phone_number TEXT,
+            processed_at TEXT
+        )
+    """)
+
     db.commit()
     db.close()
 
@@ -114,9 +133,7 @@ def initialize_database():
 initialize_database()
 
 
-# ==========================================
 # AUTHENTICATION
-# ==========================================
 
 def login_required(function):
 
@@ -131,10 +148,6 @@ def login_required(function):
     return wrapper
 
 
-# ==========================================
-# HOME PAGE
-# ==========================================
-
 @app.route("/")
 def index():
 
@@ -144,104 +157,95 @@ def index():
     return redirect(url_for("login"))
 
 
-# ==========================================
-# USER REGISTRATION
-# ==========================================
-
 @app.route("/register", methods=["GET", "POST"])
 def register():
 
     if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
 
-        username = request.form.get("username")
-        password = request.form.get("password")
-
-        if not username or not password:
-
+        if not all([full_name, email, password, confirm_password]):
             return render_template(
                 "register.html",
-                error="Please fill in all fields."
+                error="Please fill in all fields.",
+                full_name=full_name,
+                email=email
             )
 
-        hashed_password = generate_password_hash(
-            password
-        )
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            return render_template(
+                "register.html",
+                error="Please enter a valid email address.",
+                full_name=full_name,
+                email=email
+            )
 
+        if password != confirm_password:
+            return render_template(
+                "register.html",
+                error="Passwords do not match.",
+                full_name=full_name,
+                email=email
+            )
+
+        hashed_password = generate_password_hash(password)
         db = get_db()
 
         try:
-
+            # username is retained for compatibility with existing parts
+            # of the project; the email is now the sign-in identifier.
             db.execute(
                 """
-                INSERT INTO users(username, password)
-                VALUES (?, ?)
+                INSERT INTO users(username, password, full_name, email)
+                VALUES (?, ?, ?, ?)
                 """,
-                (username, hashed_password)
+                (email, hashed_password, full_name, email)
             )
-
             db.commit()
-
         except sqlite3.IntegrityError:
-
             db.close()
-
             return render_template(
                 "register.html",
-                error="Username already exists."
+                error="An account with this email address already exists.",
+                full_name=full_name,
+                email=email
             )
 
         db.close()
-
         return redirect(url_for("login"))
 
     return render_template("register.html")
 
 
-# ==========================================
-# USER LOGIN
-# ==========================================
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
 
     if request.method == "POST":
-
-        username = request.form.get("username")
-        password = request.form.get("password")
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
 
         db = get_db()
-
         user = db.execute(
-            """
-            SELECT * FROM users
-            WHERE username = ?
-            """,
-            (username,)
+            "SELECT * FROM users WHERE email = ?",
+            (email,)
         ).fetchone()
-
         db.close()
 
-        if user and check_password_hash(
-            user["password"],
-            password
-        ):
-
+        if user and check_password_hash(user["password"], password):
             session["user_id"] = user["id"]
-            session["username"] = user["username"]
-
+            session["username"] = user["full_name"] or user["username"] or email
+            session["email"] = user["email"] or email
             return redirect(url_for("dashboard"))
 
         return render_template(
             "login.html",
-            error="Invalid username or password."
+            error="Invalid email address or password.",
+            email=email
         )
 
     return render_template("login.html")
-
-
-# ==========================================
-# USER LOGOUT
-# ==========================================
 
 @app.route("/logout")
 def logout():
@@ -251,9 +255,7 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ==========================================
 # DASHBOARD
-# ==========================================
 
 @app.route("/dashboard")
 @login_required
@@ -290,9 +292,7 @@ def dashboard():
     )
 
 
-# ==========================================
 # DOCUMENT UPLOAD
-# ==========================================
 
 def allowed_file(filename):
 
@@ -316,7 +316,6 @@ def upload_document():
     file = request.files["file"]
 
     if file.filename == "":
-
         return jsonify({
             "error": "Please select a file"
         }), 400
@@ -359,9 +358,7 @@ def upload_document():
         }), 500
 
 
-# ==========================================
-# AI CHAT API
-# ==========================================
+# CHAT API
 
 @app.route("/chat", methods=["POST"])
 @login_required
@@ -381,24 +378,22 @@ def chat():
 
     db = get_db()
 
+    memory_record = db.execute(
+        """
+        SELECT memory FROM memories
+        WHERE user_id = ?
+        """,
+        (user_id,)
+    ).fetchone()
+
+    history = (
+        memory_record["memory"]
+        if memory_record
+        else ""
+    )
+
     try:
 
-        # Retrieve user's previous memory
-        memory_record = db.execute(
-            """
-            SELECT memory FROM memories
-            WHERE user_id = ?
-            """,
-            (user_id,)
-        ).fetchone()
-
-        history = (
-            memory_record["memory"]
-            if memory_record
-            else ""
-        )
-
-        # Process query using AI agents
         result = run_agents(
             query,
             history
@@ -408,7 +403,6 @@ def chat():
         sources = result["sources"]
         memory = result["memory"]
 
-        # Save conversation
         db.execute(
             """
             INSERT INTO conversations
@@ -424,7 +418,6 @@ def chat():
             )
         )
 
-        # Update user memory
         db.execute(
             """
             INSERT INTO memories(user_id, memory)
@@ -436,6 +429,7 @@ def chat():
         )
 
         db.commit()
+        db.close()
 
         return jsonify({
             "answer": answer,
@@ -445,22 +439,14 @@ def chat():
 
     except Exception as error:
 
-        db.rollback()
-
-        print("Chat API Error:", error)
+        db.close()
 
         return jsonify({
             "error": str(error)
         }), 500
 
-    finally:
 
-        db.close()
-
-
-# ==========================================
 # ANALYTICS API
-# ==========================================
 
 @app.route("/analytics")
 @login_required
@@ -485,9 +471,226 @@ def analytics():
     })
 
 
-# ==========================================
-# APPLICATION START
-# ==========================================
+# WHATSAPP CLOUD API INTEGRATION
+
+def verify_whatsapp_signature():
+    """
+    Validate that the webhook POST was sent by Meta.
+    Set WHATSAPP_APP_SECRET in .env to enable validation.
+    """
+    app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
+
+    # During initial local setup, signature validation can be disabled.
+    # Configure the Meta App Secret before production deployment.
+    if not app_secret:
+        return True
+
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    if not signature.startswith("sha256="):
+        return False
+
+    expected = hmac.new(
+        app_secret.encode("utf-8"),
+        request.get_data(cache=True),
+        hashlib.sha256
+    ).hexdigest()
+
+    supplied = signature.split("=", 1)[1]
+    return hmac.compare_digest(expected, supplied)
+
+
+def send_whatsapp_message(recipient, message):
+    """Send a text reply through the WhatsApp Cloud API."""
+    access_token = os.getenv("WHATSAPP_TOKEN", "").strip()
+    phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+    api_version = os.getenv("WHATSAPP_API_VERSION", "v23.0").strip()
+
+    if not access_token or not phone_number_id:
+        raise RuntimeError(
+            "Set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID in your .env file."
+        )
+
+    url = (
+        f"https://graph.facebook.com/{api_version}/"
+        f"{phone_number_id}/messages"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    # WhatsApp text messages have a 4096-character body limit.
+    # Send in smaller chunks to avoid exceeding that limit.
+    message = str(message or "").strip() or "Sorry, I could not generate an answer."
+    chunks = [
+        message[index:index + 4000]
+        for index in range(0, len(message), 4000)
+    ]
+
+    results = []
+    for chunk in chunks:
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": recipient,
+            "type": "text",
+            "text": {
+                "preview_url": False,
+                "body": chunk
+            }
+        }
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=20
+        )
+        response.raise_for_status()
+        results.append(response.json())
+
+    return results
+
+
+@app.route("/webhook", methods=["GET"])
+def verify_whatsapp():
+    """Meta calls this endpoint when verifying the webhook URL."""
+    verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip()
+
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+
+    if (
+        mode == "subscribe"
+        and verify_token
+        and token == verify_token
+        and challenge
+    ):
+        return challenge, 200
+
+    return "Verification failed", 403
+
+
+@app.route("/webhook", methods=["POST"])
+def whatsapp_webhook():
+    """Receive WhatsApp messages, run the existing agents, and reply."""
+    if not verify_whatsapp_signature():
+        return jsonify({"status": "invalid signature"}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    # Meta also sends webhook events for delivery/read status updates.
+    # Those events do not contain messages, so simply acknowledge them.
+    try:
+        for entry in data.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {}) or {}
+
+                for message in value.get("messages", []):
+                    sender = message.get("from")
+                    message_id = message.get("id")
+                    message_type = message.get("type")
+
+                    if not sender or not message_id:
+                        continue
+
+                    if message_type != "text":
+                        send_whatsapp_message(
+                            sender,
+                            "At the moment, I can answer text messages. "
+                            "Please send your question as text."
+                        )
+                        continue
+
+                    user_query = (
+                        message.get("text", {}).get("body", "") or ""
+                    ).strip()
+
+                    if not user_query:
+                        continue
+
+                    db = get_db()
+                    try:
+                        # Ignore duplicate webhook deliveries from Meta.
+                        cursor = db.execute(
+                            """
+                            INSERT OR IGNORE INTO whatsapp_processed_messages
+                            (message_id, phone_number, processed_at)
+                            VALUES (?, ?, ?)
+                            """,
+                            (
+                                message_id,
+                                sender,
+                                datetime.now().isoformat()
+                            )
+                        )
+                        db.commit()
+
+                        if cursor.rowcount == 0:
+                            continue
+
+                        memory_record = db.execute(
+                            """
+                            SELECT memory
+                            FROM whatsapp_memories
+                            WHERE phone_number = ?
+                            """,
+                            (sender,)
+                        ).fetchone()
+
+                        history = (
+                            memory_record["memory"]
+                            if memory_record
+                            else ""
+                        )
+
+                        # Reuse the same five-agent Gemini + RAG pipeline
+                        # that powers the website chat endpoint.
+                        result = run_agents(user_query, history)
+
+                        answer = result.get(
+                            "answer",
+                            "Sorry, I could not generate an answer."
+                        )
+                        sources = result.get("sources", [])
+                        memory = result.get("memory", history)
+
+                        if sources:
+                            answer += "\n\nSources: " + ", ".join(sources)
+
+                        db.execute(
+                            """
+                            INSERT INTO whatsapp_memories(phone_number, memory)
+                            VALUES (?, ?)
+                            ON CONFLICT(phone_number)
+                            DO UPDATE SET memory = excluded.memory
+                            """,
+                            (sender, memory)
+                        )
+                        db.commit()
+
+                    finally:
+                        db.close()
+
+                    send_whatsapp_message(sender, answer)
+
+                    print(
+                        "WhatsApp question processed successfully for:",
+                        sender
+                    )
+
+    except requests.RequestException as error:
+        # Log the provider response without exposing access tokens.
+        print("WhatsApp API request failed:", error)
+    except Exception as error:
+        print("WhatsApp message processing failed:", error)
+
+    # Acknowledge the webhook. Meta should not repeatedly redeliver
+    # a message while the application is reporting an internal error.
+    return jsonify({"status": "received"}), 200
+
 
 if __name__ == "__main__":
 
