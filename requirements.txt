@@ -1,0 +1,9 @@
+Flask
+python-dotenv
+google-generativeai
+chromadb
+sentence-transformers
+pypdf
+python-docx
+pandas
+requests

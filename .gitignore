@@ -1,0 +1,30 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+.env.*
+
+# Node modules
+node_modules/
+
+# IDE
+.vscode/
+
+# Generated files
+*.log
+.DS_Store
+
+# Uploaded documents
+uploads/
+
+# Vector database
+faiss_index/
