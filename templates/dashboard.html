@@ -4,6 +4,7 @@
 {% block content %}
 
 <style>
+/* AI AGENT STATUS */
 .dashboard .agent-card {
     transition: all 0.25s ease;
 }
@@ -37,18 +38,135 @@
     color: white;
 }
 
-#analysisStatus {
+/* GEMINI-STYLE AI ASSISTANT */
+#chat.assistant-panel {
+    padding: 0;
+    overflow: hidden;
+    background: #0d1422;
+    border: 1px solid #263449;
+    border-radius: 20px;
+}
+
+#chat .assistant-heading {
+    padding: 22px 26px 0;
+}
+
+#chat .assistant-heading h2 {
+    font-size: 21px;
+    margin: 0;
+}
+
+#chat .assistant-heading p {
+    margin-top: 7px;
+    color: #91a0b8;
+}
+
+#chat .assistant-welcome {
+    max-width: 760px;
+    margin: 34px auto 22px;
+    padding: 0 22px;
+    text-align: center;
+}
+
+#chat .assistant-welcome h3 {
+    font-size: clamp(27px, 4vw, 39px);
+    line-height: 1.2;
+    color: #e8edff;
+    margin-bottom: 10px;
+}
+
+#chat .assistant-welcome p {
+    color: #9ba9c0;
+}
+
+#chat .prompt-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 24px;
+    text-align: left;
+}
+
+#chat .prompt-card {
+    min-height: 76px;
+    padding: 15px;
+    border: 1px solid #2b3a51;
+    border-radius: 14px;
+    background: #131e30;
+    color: #dce5f7;
+    text-align: left;
+    line-height: 1.45;
+    transition: 0.2s ease;
+}
+
+#chat .prompt-card:hover {
+    background: #1a2940;
+    border-color: #7185b8;
+    transform: translateY(-2px);
+}
+
+/* CHAT MESSAGES */
+#chat #chatMessages {
+    height: min(48vh, 510px);
+    min-height: 250px;
+    overflow-y: auto;
+    padding: 24px max(22px, calc((100% - 780px)/2));
+    margin: 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scroll-behavior: smooth;
+}
+
+#chat .message {
+    max-width: min(82%, 760px);
+    padding: 14px 18px;
+    border-radius: 18px;
+    line-height: 1.7;
+    font-size: 15px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+#chat .message.bot {
+    align-self: flex-start;
+    background: transparent;
+    border: 1px solid #26364d;
+    color: #e2e8f0;
+    border-top-left-radius: 6px;
+}
+
+#chat .message.user {
+    align-self: flex-end;
+    background: #263b5d;
+    color: white;
+    border-top-right-radius: 6px;
+}
+
+#chat .message.sources {
+    max-width: 100%;
+    padding: 10px 0 0;
+    border: 0;
+    background: transparent;
+    color: #91a8ce;
+    font-size: 12px;
+}
+
+/* LOADING INDICATOR */
+#chat #analysisStatus {
     display: none;
-    margin-top: 15px;
+    margin: 0 auto 10px;
+    width: min(780px, calc(100% - 40px));
     padding: 12px 15px;
     border-radius: 10px;
-    background: rgba(59, 130, 246, 0.10);
-    color: #60a5fa;
+    color: #9db9ef;
+    background: #15243a;
     align-items: center;
     gap: 10px;
 }
 
-#analysisStatus.visible {
+#chat #analysisStatus.visible {
     display: flex;
 }
 
@@ -66,60 +184,129 @@
     to { transform: rotate(360deg); }
 }
 
-.message {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+/* MESSAGE COMPOSER */
+#chat .assistant-composer-wrap {
+    padding: 12px 22px 22px;
+    background: linear-gradient(
+        180deg,
+        rgba(13,20,34,0),
+        #0d1422 18%
+    );
 }
 
-.message.sources {
-    font-size: 13px;
-    opacity: 0.8;
-    margin-top: 8px;
+#chat .chat-input {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 9px 10px 9px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #172338;
+    border: 1px solid #354760;
+    border-radius: 28px;
+    box-shadow: 0 12px 35px #0003;
 }
 
-.chat-input button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+#chat .chat-input input {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 12px 4px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #f4f7ff;
+    box-shadow: none;
 }
 
-#chatMessages {
-    scroll-behavior: smooth;
+#chat .chat-input input::placeholder {
+    color: #9aa9bf;
 }
 
-/* Voice typing buttons */
-#startVoice,
-#stopVoice {
-    padding: 10px 15px;
-    border: none;
-    border-radius: 8px;
-    color: white;
-    cursor: pointer;
-    font-weight: 600;
+#chat .chat-input button {
+    flex-shrink: 0;
+    border-radius: 22px;
+    padding: 11px 15px;
 }
 
-#startVoice {
+#chat #sendButton {
+    background: #8aa7f8;
+    color: #101a2c;
+    font-weight: 700;
+}
+
+#chat #sendButton:hover {
+    background: #a8bcff;
+}
+
+#chat #startVoice {
     background: #096961;
 }
 
-#stopVoice {
+#chat #stopVoice {
     background: #dc2626;
 }
 
-#startVoice:disabled,
-#stopVoice:disabled {
+#chat .chat-input button:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
 
-#voiceStatus {
-    color: #60a5fa;
-    margin-top: 10px;
-    font-size: 13px;
+#chat #voiceStatus {
+    max-width: 820px;
+    margin: 8px auto 0;
+    padding-left: 8px;
+    color: #91a8ce;
+    font-size: 12px;
+}
+
+#chat .assistant-note {
+    max-width: 820px;
+    margin: 10px auto 0;
+    color: #71819a;
+    text-align: center;
+    font-size: 11px;
+}
+
+/* MOBILE RESPONSIVENESS */
+@media (max-width: 700px) {
+    #chat .prompt-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #chat #chatMessages {
+        height: 45vh;
+        padding: 18px 14px;
+    }
+
+    #chat .message {
+        max-width: 94%;
+    }
+
+    #chat .assistant-composer-wrap {
+        padding: 10px 12px 16px;
+    }
+
+    #chat .chat-input {
+        flex-wrap: wrap;
+        border-radius: 18px;
+        padding: 10px;
+    }
+
+    #chat .chat-input input {
+        flex-basis: 100%;
+    }
+
+    #chat #startVoice,
+    #chat #stopVoice {
+        flex: 1;
+    }
 }
 </style>
 
 <div class="dashboard">
 
+    <!-- SIDEBAR -->
     <aside class="sidebar">
 
         <h2>AI SYSTEM</h2>
@@ -134,6 +321,7 @@
 
     <main class="main-content">
 
+        <!-- HEADER -->
         <header class="topbar">
 
             <div>
@@ -142,11 +330,12 @@
             </div>
 
             <div class="status">
-                USER ONLINE 
+                USER ONLINE
             </div>
 
         </header>
 
+        <!-- STATISTICS -->
         <section class="stats">
 
             <div class="stat-card">
@@ -167,7 +356,6 @@
         </section>
 
         <!-- AI AGENTS -->
-
         <section id="agents">
 
             <h2>Multi-Agent Workflow</h2>
@@ -209,7 +397,6 @@
         </section>
 
         <!-- DOCUMENT UPLOAD -->
-
         <section id="documents" class="panel">
 
             <h2>Knowledge Base Upload</h2>
@@ -235,74 +422,136 @@
 
         </section>
 
-        <!-- CHAT ASSISTANT -->
+        <!-- GEMINI-STYLE AI ASSISTANT -->
+        <section id="chat" class="panel assistant-panel">
 
-        <section id="chat" class="panel">
+            <div class="assistant-heading">
 
-            <h2>AI Assistant</h2>
+                <h2>AI Assistant</h2>
 
+                <p>
+                    Powered by Gemini · Ask questions or explore your uploaded knowledge
+                </p>
+
+            </div>
+
+            <!-- WELCOME SCREEN -->
+            <div id="assistantWelcome" class="assistant-welcome">
+
+                <h3>Hello, {{ username }}! 👋</h3>
+
+                <p>What would you like to know today?</p>
+
+                <div class="prompt-grid">
+
+                    <button
+                        type="button"
+                        class="prompt-card"
+                        onclick="usePrompt('Summarize the documents I uploaded.')"
+                    >
+                        📄 Summarize my uploaded documents
+                    </button>
+
+                    <button
+                        type="button"
+                        class="prompt-card"
+                        onclick="usePrompt('Explain a difficult topic in simple words.')"
+                    >
+                        💡 Explain a difficult topic simply
+                    </button>
+
+                    <button
+                        type="button"
+                        class="prompt-card"
+                        onclick="usePrompt('Find the most important points in my documents.')"
+                    >
+                        🔎 Find the key points in my documents
+                    </button>
+
+                    <button
+                        type="button"
+                        class="prompt-card"
+                        onclick="usePrompt('Give me a step-by-step solution to a problem.')"
+                    >
+                        🧭 Give me a step-by-step solution
+                    </button>
+
+                </div>
+
+            </div>
+
+            <!-- CHAT MESSAGES -->
             <div
                 id="chatMessages"
                 class="chat-messages"
                 aria-live="polite"
                 aria-label="Chat messages"
-            >
-
-                <div class="message bot">
-                    Hello! Ask me anything about your uploaded documents.
-                </div>
-
-            </div>
+            ></div>
 
             <!-- LOADING STATUS -->
-
             <div id="analysisStatus" role="status" aria-live="polite">
 
                 <span class="loading-spinner"></span>
 
                 <span id="analysisText">
-                    Processing your question...
+                    Gemini is thinking...
                 </span>
 
             </div>
 
-            <!-- CHAT INPUT -->
+            <!-- INPUT AREA -->
+            <div class="assistant-composer-wrap">
 
-            <div class="chat-input">
+                <div class="chat-input">
 
-                <input
-                    type="text"
-                    id="userMessage"
-                    placeholder="Ask your question..."
-                    autocomplete="off"
-                >
+                    <input
+                        type="text"
+                        id="userMessage"
+                        placeholder="Ask anything..."
+                        autocomplete="off"
+                        aria-label="Your message"
+                    >
 
-                <button
-                    type="button"
-                    id="sendButton"
-                    onclick="sendMessage()"
-                >
-                    Send
-                </button>
+                    <button
+                        type="button"
+                        id="startVoice"
+                        onclick="startVoiceChat()"
+                        title="Start voice chat"
+                    >
+                        🎙 Voice
+                    </button>
 
-                <button
-    type="button"
-    id="startVoice"
-    onclick="startVoiceChat()"
->
-    🎙 Start Voice Chat
-</button>
+                    <button
+                        type="button"
+                        id="stopVoice"
+                        onclick="stopVoiceChat()"
+                        disabled
+                        title="End voice chat"
+                    >
+                        ⏹ Stop
+                    </button>
 
-<button
-    type="button"
-    id="stopVoice"
-    onclick="stopVoiceChat()"
-    disabled
->
-    ⏹ End Voice Chat
-</button>
+                    <button
+                        type="button"
+                        id="sendButton"
+                        onclick="sendMessage()"
+                        aria-label="Send message"
+                    >
+                        ➤
+                    </button>
 
-<p id="voiceStatus">Voice chat is ready.</p>
+                </div>
+
+                <p id="voiceStatus">
+                    Voice chat is ready.
+                </p>
+
+                <p class="assistant-note">
+                    IntelliQuery can make mistakes. Check important information.
+                </p>
+
+            </div>
+
         </section>
 
     </main>
@@ -338,6 +587,16 @@ function addMessage(text, type) {
 
     message.className = "message " + type;
 
+    if (type === "user") {
+
+        const welcome = document.getElementById("assistantWelcome");
+
+        if (welcome) {
+            welcome.style.display = "none";
+        }
+
+    }
+
     message.textContent = text;
 
     container.appendChild(message);
@@ -345,6 +604,22 @@ function addMessage(text, type) {
     container.scrollTop = container.scrollHeight;
 
     return message;
+
+}
+
+
+// ===================================
+// SUGGESTED PROMPTS
+// ===================================
+
+function usePrompt(prompt) {
+
+    const input = document.getElementById("userMessage");
+
+    input.value = prompt;
+
+    sendMessage();
+
 }
 
 
@@ -363,6 +638,7 @@ function setAnalysisStatus(visible, message = "") {
     if (message) {
         text.textContent = message;
     }
+
 }
 
 
@@ -376,11 +652,15 @@ function resetAgents() {
 
         const card = document.getElementById(id);
 
+        if (!card) return;
+
         card.classList.remove("active", "completed");
 
         const label = card.querySelector(".agent-status");
 
-        label.textContent = "Idle";
+        if (label) {
+            label.textContent = "Idle";
+        }
 
     });
 
@@ -399,7 +679,11 @@ function updateAgents(agentStatuses) {
 
         const card = document.getElementById(id);
 
+        if (!card) return;
+
         const label = card.querySelector(".agent-status");
+
+        if (!label) return;
 
         card.classList.remove("active", "completed");
 
@@ -469,7 +753,7 @@ async function sendMessage() {
 
     setAnalysisStatus(
         true,
-        "Your question is being processed. Searching for relevant information..."
+        "Gemini is thinking and searching for relevant information..."
     );
 
     const startedAt = Date.now();
@@ -490,7 +774,21 @@ async function sendMessage() {
 
         });
 
-        const result = await response.json();
+        const responseText = await response.text();
+
+        let result;
+
+        try {
+
+            result = responseText ? JSON.parse(responseText) : {};
+
+        } catch (parseError) {
+
+            throw new Error(
+                "The server returned an invalid response. Check the Flask server logs."
+            );
+
+        }
 
         if (!response.ok) {
 
@@ -556,14 +854,15 @@ async function sendMessage() {
 
     }
 
-    document.getElementById("chatMessages").scrollTop =
-        document.getElementById("chatMessages").scrollHeight;
+    const container = document.getElementById("chatMessages");
+
+    container.scrollTop = container.scrollHeight;
 
 }
 
 
 // ===================================
-// SEND MESSAGE USING ENTER KEY
+// ENTER KEY TO SEND MESSAGE
 // ===================================
 
 document.getElementById("userMessage").addEventListener(
@@ -628,7 +927,21 @@ document.getElementById("uploadForm").addEventListener(
 
             });
 
-            const result = await response.json();
+            const responseText = await response.text();
+
+            let result;
+
+            try {
+
+                result = responseText ? JSON.parse(responseText) : {};
+
+            } catch (error) {
+
+                throw new Error(
+                    "The server returned an invalid upload response."
+                );
+
+            }
 
             if (!response.ok) {
 
@@ -659,14 +972,8 @@ document.getElementById("uploadForm").addEventListener(
 );
 
 
-// ===================================
-// VOICE TYPING - SPEECH RECOGNITION
-// ===================================
-
-
 // ==========================================
-// CHATGPT-STYLE CONTINUOUS VOICE CHAT
-// Flask + Gemini
+// VOICE CHAT - SPEECH RECOGNITION
 // ==========================================
 
 const SpeechRecognition =
@@ -717,11 +1024,7 @@ if (!SpeechRecognition) {
     voiceRecognition.maxAlternatives = 1;
 
 
-    // ======================================
-    // MICROPHONE STARTED
-    // ======================================
-
-    voiceRecognition.onstart = function () {
+    voiceRecognition.onstart = function() {
 
         voiceIsListening = true;
 
@@ -731,11 +1034,7 @@ if (!SpeechRecognition) {
     };
 
 
-    // ======================================
-    // CAPTURE USER SPEECH
-    // ======================================
-
-    voiceRecognition.onresult = function (event) {
+    voiceRecognition.onresult = function(event) {
 
         const transcript =
             event.results[0][0].transcript.trim();
@@ -751,11 +1050,7 @@ if (!SpeechRecognition) {
     };
 
 
-    // ======================================
-    // MICROPHONE STOPPED
-    // ======================================
-
-    voiceRecognition.onend = function () {
+    voiceRecognition.onend = function() {
 
         voiceIsListening = false;
 
@@ -771,7 +1066,6 @@ if (!SpeechRecognition) {
 
         } else if (!voiceIsSpeaking && !voiceRequestInProgress) {
 
-            // Restart listening if no speech was detected.
             restartVoiceRecognition();
 
         }
@@ -779,34 +1073,34 @@ if (!SpeechRecognition) {
     };
 
 
-    // ======================================
-    // SPEECH RECOGNITION ERRORS
-    // ======================================
-
-    voiceRecognition.onerror = function (event) {
+    voiceRecognition.onerror = function(event) {
 
         console.error(
             "Voice recognition error:",
             event.error
         );
 
-        if (event.error === "not-allowed" ||
-            event.error === "service-not-allowed") {
+        if (
+            event.error === "not-allowed" ||
+            event.error === "service-not-allowed"
+        ) {
 
             voiceStatus.textContent =
                 "Microphone permission denied. Allow microphone access.";
 
             stopVoiceChat();
 
-            return;
-        }
-
-        if (event.error === "audio-capture") {
+        } else if (event.error === "audio-capture") {
 
             voiceStatus.textContent =
                 "Microphone not detected. Check your microphone.";
 
             stopVoiceChat();
+
+        } else if (event.error === "network") {
+
+            voiceStatus.textContent =
+                "Voice recognition network error. Check your internet connection.";
 
         }
 
@@ -821,9 +1115,7 @@ if (!SpeechRecognition) {
 
 function startVoiceChat() {
 
-    if (!voiceRecognition) return;
-
-    if (voiceChatActive) return;
+    if (!voiceRecognition || voiceChatActive) return;
 
     voiceChatActive = true;
 
@@ -849,9 +1141,11 @@ function startListening() {
 
     if (!voiceChatActive) return;
 
-    if (voiceIsListening ||
+    if (
+        voiceIsListening ||
         voiceIsSpeaking ||
-        voiceRequestInProgress) return;
+        voiceRequestInProgress
+    ) return;
 
     try {
 
@@ -879,8 +1173,7 @@ function restartVoiceRecognition() {
     voiceStatus.textContent =
         "🎙 Listening for your next question...";
 
-    // Give the browser a moment before restarting.
-    setTimeout(function () {
+    setTimeout(function() {
 
         startListening();
 
@@ -890,7 +1183,7 @@ function restartVoiceRecognition() {
 
 
 // ==========================================
-// SEND SPEECH AUTOMATICALLY TO FLASK
+// SEND VOICE MESSAGE TO FLASK
 // ==========================================
 
 async function sendVoiceMessage(message) {
@@ -904,7 +1197,6 @@ async function sendVoiceMessage(message) {
 
     voiceChatInput.value = message;
 
-    // Display user's spoken message.
     addMessage(message, "user");
 
     try {
@@ -923,7 +1215,19 @@ async function sendVoiceMessage(message) {
 
         });
 
-        const result = await response.json();
+        const responseText = await response.text();
+
+        let result;
+
+        try {
+
+            result = responseText ? JSON.parse(responseText) : {};
+
+        } catch (error) {
+
+            throw new Error("Invalid response from server.");
+
+        }
 
         if (!response.ok) {
 
@@ -936,17 +1240,20 @@ async function sendVoiceMessage(message) {
         const answer =
             result.answer || "I could not generate an answer.";
 
-        // Display Gemini's answer.
         addMessage(answer, "bot");
 
-        // Update agent cards if provided.
-        if (result.agents) {
+        updateAgents(result.agents);
 
-            updateAgents(result.agents);
+        const totalQueries =
+            document.getElementById("totalQueries");
+
+        if (totalQueries) {
+
+            totalQueries.textContent =
+                Number(totalQueries.textContent || 0) + 1;
 
         }
 
-        // Speak Gemini's answer.
         speakGeminiAnswer(answer);
 
     } catch (error) {
@@ -968,7 +1275,7 @@ async function sendVoiceMessage(message) {
 
 
 // ==========================================
-// TEXT TO SPEECH - GEMINI ANSWER
+// TEXT TO SPEECH
 // ==========================================
 
 function speakGeminiAnswer(answer) {
@@ -1006,7 +1313,7 @@ function speakGeminiAnswer(answer) {
 
     speech.volume = 1;
 
-    speech.onstart = function () {
+    speech.onstart = function() {
 
         voiceIsSpeaking = true;
 
@@ -1015,7 +1322,7 @@ function speakGeminiAnswer(answer) {
 
     };
 
-    speech.onend = function () {
+    speech.onend = function() {
 
         voiceIsSpeaking = false;
 
@@ -1032,7 +1339,7 @@ function speakGeminiAnswer(answer) {
 
     };
 
-    speech.onerror = function (event) {
+    speech.onerror = function(event) {
 
         console.error("Speech output error:", event.error);
 
@@ -1091,219 +1398,6 @@ function stopVoiceChat() {
 
     voiceStatus.textContent =
         "Voice chat ended.";
-
-}
-
-
-
-// ===================================
-// CHECK BROWSER SUPPORT
-// ===================================
-
-if (SpeechRecognition) {
-
-    recognition = new SpeechRecognition();
-
-    recognition.lang = "en-IN";
-
-    recognition.continuous = true;
-
-    recognition.interimResults = true;
-
-    recognition.maxAlternatives = 1;
-
-
-    // ===================================
-    // WHEN MICROPHONE STARTS
-    // ===================================
-
-    recognition.onstart = function() {
-
-        isListening = true;
-
-        startVoiceButton.disabled = true;
-
-        stopVoiceButton.disabled = false;
-
-        voiceStatusElement.textContent =
-            "🎙 Listening... Speak now.";
-
-    };
-
-
-    // ===================================
-    // GET SPEECH AND CONVERT TO TEXT
-    // ===================================
-
-    recognition.onresult = function(event) {
-
-        let interimTranscript = "";
-
-        for (
-            let i = event.resultIndex;
-            i < event.results.length;
-            i++
-        ) {
-
-            const spokenText =
-                event.results[i][0].transcript;
-
-            if (event.results[i].isFinal) {
-
-                finalTranscript += spokenText + " ";
-
-            } else {
-
-                interimTranscript += spokenText;
-
-            }
-
-        }
-
-        voiceInput.value =
-            (finalTranscript + interimTranscript).trim();
-
-        voiceInput.focus();
-
-        voiceInput.setSelectionRange(
-            voiceInput.value.length,
-            voiceInput.value.length
-        );
-
-    };
-
-
-    // ===================================
-    // VOICE ERROR HANDLING
-    // ===================================
-
-    recognition.onerror = function(event) {
-
-        const messages = {
-
-            "not-allowed":
-                "Microphone permission denied. Allow microphone access in your browser.",
-
-            "service-not-allowed":
-                "Speech recognition service is not allowed.",
-
-            "no-speech":
-                "No speech detected. Please try again.",
-
-            "audio-capture":
-                "No microphone detected. Check your microphone connection.",
-
-            "network":
-                "Speech recognition network error. Check your internet connection.",
-
-            "aborted":
-                "Voice recognition was cancelled."
-
-        };
-
-        voiceStatusElement.textContent =
-            messages[event.error] ||
-            ("Voice error: " + event.error);
-
-    };
-
-
-    // ===================================
-    // WHEN MICROPHONE STOPS
-    // ===================================
-
-    recognition.onend = function() {
-
-        isListening = false;
-
-        startVoiceButton.disabled = false;
-
-        stopVoiceButton.disabled = true;
-
-        if (
-            voiceStatusElement.textContent ===
-                "Stopping voice recognition..." ||
-
-            voiceStatusElement.textContent ===
-                "🎙 Listening... Speak now."
-        ) {
-
-            voiceStatusElement.textContent =
-                "Voice typing stopped. Review your text or click Send.";
-
-        }
-
-    };
-
-} else {
-
-    startVoiceButton.disabled = true;
-
-    stopVoiceButton.disabled = true;
-
-    voiceStatusElement.textContent =
-        "Speech recognition is not supported in this browser. Please use Chrome or Edge.";
-
-}
-
-
-// ===================================
-// START VOICE RECOGNITION
-// ===================================
-
-function startVoiceRecognition() {
-
-    if (!recognition || isListening) return;
-
-    // Preserve text already typed in the message box.
-
-    finalTranscript = voiceInput.value.trim();
-
-    if (finalTranscript) {
-
-        finalTranscript += " ";
-
-    }
-
-    voiceStatusElement.textContent =
-        "Starting microphone...";
-
-    try {
-
-        recognition.start();
-
-    } catch (error) {
-
-        voiceStatusElement.textContent =
-            "Unable to start microphone. Wait a moment and try again.";
-
-        console.error("Voice start error:", error);
-
-    }
-
-}
-
-
-// ===================================
-// STOP VOICE RECOGNITION
-// ===================================
-
-function stopVoiceRecognition() {
-
-    if (!recognition || !isListening) return;
-
-    voiceStatusElement.textContent =
-        "Stopping voice recognition...";
-
-    try {
-
-        recognition.stop();
-
-    } catch (error) {
-
-        console.error("Voice stop error:", error);
-
-    }
 
 }
 
