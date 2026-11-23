@@ -141,13 +141,13 @@ def split_text(text, chunk_size=700, overlap=100):
 # -------------------------------------------------
 # ADD DOCUMENT
 # -------------------------------------------------
+
 def add_document(file_path):
 
     print("UPLOAD: Starting document processing", flush=True)
 
     start_time = time.time()
 
-    # Step 1: Read document
     print("UPLOAD: Reading document...", flush=True)
 
     text = read_document(file_path)
@@ -157,7 +157,6 @@ def add_document(file_path):
         flush=True
     )
 
-    # Step 2: Split text
     print("UPLOAD: Splitting text...", flush=True)
 
     chunks = split_text(text)
@@ -171,7 +170,6 @@ def add_document(file_path):
         print("UPLOAD: No readable text found", flush=True)
         return 0
 
-    # Step 3: Generate embeddings
     print("UPLOAD: Starting Gemini embeddings...", flush=True)
 
     embeddings = generate_embeddings(
@@ -181,7 +179,6 @@ def add_document(file_path):
 
     print("UPLOAD: Gemini embeddings completed", flush=True)
 
-    # Step 4: Create IDs and metadata
     ids = [
         str(uuid.uuid4())
         for _ in chunks
@@ -195,42 +192,42 @@ def add_document(file_path):
         for index in range(len(chunks))
     ]
 
-    
-# Step 5: Store in ChromaDB
-print("UPLOAD: Checking ChromaDB...", flush=True)
+    print("UPLOAD: Checking ChromaDB...", flush=True)
 
-try:
-    print(
-        "UPLOAD: Current collection count:",
-        collection.count(),
-        flush=True
-    )
+    try:
 
-    print("UPLOAD: Calling ChromaDB add...", flush=True)
+        print(
+            "UPLOAD: Current collection count:",
+            collection.count(),
+            flush=True
+        )
 
-    collection.add(
-        ids=ids,
-        documents=chunks,
-        embeddings=embeddings,
-        metadatas=metadata
-    )
+        print("UPLOAD: Calling ChromaDB add...", flush=True)
 
-    print("UPLOAD: ChromaDB add completed!", flush=True)
+        collection.add(
+            ids=ids,
+            documents=chunks,
+            embeddings=embeddings,
+            metadatas=metadata
+        )
 
-    print(
-        "UPLOAD: New collection count:",
-        collection.count(),
-        flush=True
-    )
+        print("UPLOAD: ChromaDB add completed!", flush=True)
 
-except Exception as error:
-    print(
-        "UPLOAD: ChromaDB ERROR:",
-        repr(error),
-        flush=True
-    )
-    raise
+        print(
+            "UPLOAD: New collection count:",
+            collection.count(),
+            flush=True
+        )
 
+    except Exception as error:
+
+        print(
+            "UPLOAD: ChromaDB ERROR:",
+            repr(error),
+            flush=True
+        )
+
+        raise
 
     print(
         f"UPLOAD: Completed in {time.time() - start_time:.2f} seconds",
