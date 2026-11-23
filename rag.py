@@ -1,5 +1,4 @@
 
-import time
 import os
 import uuid
 import pandas as pd
@@ -29,24 +28,15 @@ EMBEDDING_MODEL = "gemini-embedding-001"
 
 CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
 
-# -------------------------------------------------
-# CHROMADB INITIALIZATION
-# -------------------------------------------------
-
-print("CHROMA: Initializing ChromaDB...", flush=True)
-
 chroma_client = chromadb.PersistentClient(
     path=CHROMA_DIR
 )
 
-print("CHROMA: Client initialized", flush=True)
-
+# New collection because Gemini embeddings have
+# a different dimension from the old local model.
 collection = chroma_client.get_or_create_collection(
-    name="knowledge_base_gemini",
-    metadata={"hnsw:space": "cosine"}
+    name="knowledge_base_gemini"
 )
-
-print("CHROMA: Collection initialized", flush=True)
 
 
 # -------------------------------------------------
@@ -57,7 +47,7 @@ def generate_embeddings(texts, task_type):
 
     all_embeddings = []
 
-    batch_size = 8
+    batch_size = 32
 
     for start in range(0, len(texts), batch_size):
 
@@ -73,9 +63,7 @@ def generate_embeddings(texts, task_type):
         )
 
         if not response.embeddings:
-            raise RuntimeError(
-                "Gemini returned no embeddings."
-            )
+            raise RuntimeError("Gemini returned no embeddings.")
 
         all_embeddings.extend(
             embedding.values
@@ -156,45 +144,18 @@ def split_text(text, chunk_size=700, overlap=100):
 
 def add_document(file_path):
 
-    print("UPLOAD: Starting document processing", flush=True)
-
-    start_time = time.time()
-
-    # Read document
-    print("UPLOAD: Reading document...", flush=True)
-
     text = read_document(file_path)
-
-    print(
-        f"UPLOAD: Extracted {len(text)} characters",
-        flush=True
-    )
-
-    # Split document
-    print("UPLOAD: Splitting text...", flush=True)
 
     chunks = split_text(text)
 
-    print(
-        f"UPLOAD: Created {len(chunks)} chunks",
-        flush=True
-    )
-
     if not chunks:
-        print("UPLOAD: No readable text found", flush=True)
         return 0
-
-    # Generate Gemini embeddings
-    print("UPLOAD: Starting Gemini embeddings...", flush=True)
 
     embeddings = generate_embeddings(
         chunks,
         "RETRIEVAL_DOCUMENT"
     )
 
-    print("UPLOAD: Gemini embeddings completed", flush=True)
-
-    # Prepare ChromaDB records
     ids = [
         str(uuid.uuid4())
         for _ in chunks
@@ -208,60 +169,11 @@ def add_document(file_path):
         for index in range(len(chunks))
     ]
 
-    # Save to ChromaDB
-    print("UPLOAD: Checking ChromaDB...", flush=True)
-
-    try:
-
-        print(
-            "UPLOAD: About to count collection",
-            flush=True
-        )
-
-        current_count = collection.count()
-
-        print(
-            "UPLOAD: Current collection count:",
-            current_count,
-            flush=True
-        )
-
-        print(
-            "UPLOAD: Calling ChromaDB add...",
-            flush=True
-        )
-
-        collection.add(
-            ids=ids,
-            documents=chunks,
-            embeddings=embeddings,
-            metadatas=metadata
-        )
-
-        print(
-            "UPLOAD: ChromaDB add completed!",
-            flush=True
-        )
-
-        print(
-            "UPLOAD: New collection count:",
-            collection.count(),
-            flush=True
-        )
-
-    except Exception as error:
-
-        print(
-            "UPLOAD: ChromaDB ERROR:",
-            repr(error),
-            flush=True
-        )
-
-        raise
-
-    print(
-        f"UPLOAD: Completed in {time.time() - start_time:.2f} seconds",
-        flush=True
+    collection.add(
+        ids=ids,
+        documents=chunks,
+        embeddings=embeddings,
+        metadatas=metadata
     )
 
     return len(chunks)
@@ -273,39 +185,27 @@ def add_document(file_path):
 
 def retrieve_documents(query, top_k=3):
 
-    print("RETRIEVE: Generating query embedding...", flush=True)
-
     query_embeddings = generate_embeddings(
         [query],
         "RETRIEVAL_QUERY"
     )
 
-    print("RETRIEVE: Checking collection...", flush=True)
-
-    current_count = collection.count()
-
-    if current_count == 0:
+    if collection.count() == 0:
         return []
-
-    print("RETRIEVE: Searching ChromaDB...", flush=True)
 
     results = collection.query(
         query_embeddings=query_embeddings,
-        n_results=min(top_k, current_count)
+        n_results=min(top_k, collection.count())
     )
 
     documents = results.get("documents", [[]])[0]
-
     metadata = results.get("metadatas", [[]])[0]
-
     distances = results.get("distances", [[]])[0]
 
     retrieved = []
 
     for document, meta, distance in zip(
-        documents,
-        metadata,
-        distances
+        documents, metadata, distances
     ):
 
         retrieved.append({
@@ -313,10 +213,5 @@ def retrieve_documents(query, top_k=3):
             "source": meta.get("source", "Unknown"),
             "distance": distance
         })
-
-    print(
-        f"RETRIEVE: Retrieved {len(retrieved)} chunks",
-        flush=True
-    )
 
     return retrieved
