@@ -1,24 +1,81 @@
+
 import os
 import uuid
 import pandas as pd
 import chromadb
 
+from dotenv import load_dotenv
 from pypdf import PdfReader
 from docx import Document
-from sentence_transformers import SentenceTransformer
+from google import genai
 
-CHROMA_DIR = "chroma_db"
+# -------------------------------------------------
+# CONFIGURATION
+# -------------------------------------------------
 
-client = chromadb.PersistentClient(path=CHROMA_DIR)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-collection = client.get_or_create_collection(
-    name="knowledge_base"
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY is missing.")
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+EMBEDDING_MODEL = "gemini-embedding-001"
+
+CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
+
+chroma_client = chromadb.PersistentClient(
+    path=CHROMA_DIR
 )
 
-embedding_model = SentenceTransformer(
-    "./models/all-MiniLM-L6-v2"
+# New collection because Gemini embeddings have
+# a different dimension from the old local model.
+collection = chroma_client.get_or_create_collection(
+    name="knowledge_base_gemini"
 )
 
+
+# -------------------------------------------------
+# GEMINI EMBEDDING FUNCTION
+# -------------------------------------------------
+
+def generate_embeddings(texts, task_type):
+
+    all_embeddings = []
+
+    batch_size = 32
+
+    for start in range(0, len(texts), batch_size):
+
+        batch = texts[start:start + batch_size]
+
+        response = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=batch,
+            config={
+                "task_type": task_type,
+                "output_dimensionality": 768
+            }
+        )
+
+        if not response.embeddings:
+            raise RuntimeError("Gemini returned no embeddings.")
+
+        all_embeddings.extend(
+            embedding.values
+            for embedding in response.embeddings
+        )
+
+    return all_embeddings
+
+
+# -------------------------------------------------
+# DOCUMENT READER
+# -------------------------------------------------
 
 def read_document(file_path):
 
@@ -28,12 +85,10 @@ def read_document(file_path):
 
         reader = PdfReader(file_path)
 
-        text = "\n".join(
+        return "\n".join(
             page.extract_text() or ""
             for page in reader.pages
         )
-
-        return text
 
     elif extension == ".docx":
 
@@ -59,6 +114,10 @@ def read_document(file_path):
         raise ValueError("Unsupported file format")
 
 
+# -------------------------------------------------
+# TEXT CHUNKING
+# -------------------------------------------------
+
 def split_text(text, chunk_size=700, overlap=100):
 
     chunks = []
@@ -79,15 +138,23 @@ def split_text(text, chunk_size=700, overlap=100):
     return chunks
 
 
+# -------------------------------------------------
+# ADD DOCUMENT
+# -------------------------------------------------
+
 def add_document(file_path):
 
     text = read_document(file_path)
 
     chunks = split_text(text)
 
-    embeddings = embedding_model.encode(
-        chunks
-    ).tolist()
+    if not chunks:
+        return 0
+
+    embeddings = generate_embeddings(
+        chunks,
+        "RETRIEVAL_DOCUMENT"
+    )
 
     ids = [
         str(uuid.uuid4())
@@ -112,17 +179,20 @@ def add_document(file_path):
     return len(chunks)
 
 
+# -------------------------------------------------
+# RETRIEVE DOCUMENTS
+# -------------------------------------------------
+
 def retrieve_documents(query, top_k=3):
 
-    query_embedding = embedding_model.encode(
+    query_embeddings = generate_embeddings(
         [query],
-         show_progress_bar=False,
-    convert_to_numpy=True
-    ).tolist()
+        "RETRIEVAL_QUERY"
+    )
 
     results = collection.query(
-        query_embeddings=query_embedding,
-        n_results=top_k
+        query_embeddings=query_embeddings,
+        n_results=min(top_k, collection.count())
     )
 
     documents = results.get("documents", [[]])[0]
