@@ -1,25 +1,32 @@
+
 {% extends "base.html" %}
 
 {% block content %}
-
 <div class="auth-container">
-
     <div class="auth-card">
-
         <h1>Create Account</h1>
-
         <p>Join the AI Query Resolution System</p>
 
         {% if error %}
-            <div class="error">{{ error }}</div>
+            <div class="error" role="alert">{{ error }}</div>
         {% endif %}
 
-        <form method="POST">
-
+        <form method="POST" action="{{ url_for('register') }}">
             <input
                 type="text"
-                name="username"
-                placeholder="Username"
+                name="full_name"
+                placeholder="Full name"
+                value="{{ full_name or '' }}"
+                autocomplete="name"
+                required
+            >
+
+            <input
+                type="email"
+                name="email"
+                placeholder="Email address"
+                value="{{ email or '' }}"
+                autocomplete="email"
                 required
             >
 
@@ -27,22 +34,25 @@
                 type="password"
                 name="password"
                 placeholder="Password"
+                autocomplete="new-password"
                 required
             >
 
-            <button type="submit">
-                Register
-            </button>
+            <input
+                type="password"
+                name="confirm_password"
+                placeholder="Re-enter password"
+                autocomplete="new-password"
+                required
+            >
 
+            <button type="submit">Create account</button>
         </form>
 
         <p>
             Already registered?
             <a href="{{ url_for('login') }}">Login</a>
         </p>
-
     </div>
-
 </div>
-
 {% endblock %}
