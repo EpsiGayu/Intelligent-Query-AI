@@ -190,6 +190,9 @@ def retrieve_documents(query, top_k=3):
         "RETRIEVAL_QUERY"
     )
 
+    if collection.count() == 0:
+        return []
+
     results = collection.query(
         query_embeddings=query_embeddings,
         n_results=min(top_k, collection.count())
