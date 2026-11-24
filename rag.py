@@ -1,6 +1,10 @@
 
 import os
 import uuid
+import time
+import threading
+from collections import OrderedDict
+
 import pandas as pd
 import chromadb
 
@@ -8,6 +12,7 @@ from dotenv import load_dotenv
 from pypdf import PdfReader
 from docx import Document
 from google import genai
+
 
 # -------------------------------------------------
 # CONFIGURATION
@@ -32,11 +37,88 @@ chroma_client = chromadb.PersistentClient(
     path=CHROMA_DIR
 )
 
-# New collection because Gemini embeddings have
-# a different dimension from the old local model.
 collection = chroma_client.get_or_create_collection(
     name="knowledge_base_gemini"
 )
+
+
+# -------------------------------------------------
+# RATE LIMITING AND CACHE CONFIGURATION
+# -------------------------------------------------
+
+BATCH_SIZE = 10
+
+REQUEST_DELAY = 1.2
+
+MAX_RETRIES = 4
+
+embedding_lock = threading.Lock()
+
+last_request_time = 0
+
+# Store frequently used query embeddings
+query_cache = OrderedDict()
+
+MAX_CACHE_SIZE = 200
+
+cache_lock = threading.Lock()
+
+
+# -------------------------------------------------
+# SAFE GEMINI EMBEDDING REQUEST
+# -------------------------------------------------
+
+def safe_embed_content(**kwargs):
+
+    global last_request_time
+
+    for attempt in range(MAX_RETRIES):
+
+        try:
+
+            with embedding_lock:
+
+                elapsed = time.time() - last_request_time
+
+                if elapsed < REQUEST_DELAY:
+                    time.sleep(REQUEST_DELAY - elapsed)
+
+                last_request_time = time.time()
+
+                response = client.models.embed_content(
+                    **kwargs
+                )
+
+            return response
+
+        except Exception as e:
+
+            error = str(e)
+
+            if (
+                "429" in error
+                or "RESOURCE_EXHAUSTED" in error
+            ):
+
+                wait_time = min(
+                    60 * (attempt + 1),
+                    180
+                )
+
+                print(
+                    f"Gemini embedding quota exceeded. "
+                    f"Retrying in {wait_time} seconds. "
+                    f"Attempt {attempt + 1}/{MAX_RETRIES}"
+                )
+
+                time.sleep(wait_time)
+
+            else:
+                raise
+
+    raise RuntimeError(
+        "Gemini embedding quota exceeded after multiple retries."
+    )
 
 
 # -------------------------------------------------
@@ -47,13 +129,14 @@ def generate_embeddings(texts, task_type):
 
     all_embeddings = []
 
-    batch_size = 32
+    if not texts:
+        return []
 
-    for start in range(0, len(texts), batch_size):
+    for start in range(0, len(texts), BATCH_SIZE):
 
-        batch = texts[start:start + batch_size]
+        batch = texts[start:start + BATCH_SIZE]
 
-        response = client.models.embed_content(
+        response = safe_embed_content(
             model=EMBEDDING_MODEL,
             contents=batch,
             config={
@@ -63,7 +146,14 @@ def generate_embeddings(texts, task_type):
         )
 
         if not response.embeddings:
-            raise RuntimeError("Gemini returned no embeddings.")
+            raise RuntimeError(
+                "Gemini returned no embeddings."
+            )
+
+        if len(response.embeddings) != len(batch):
+            raise RuntimeError(
+                "Gemini returned an unexpected number of embeddings."
+            )
 
         all_embeddings.extend(
             embedding.values
@@ -71,6 +161,49 @@ def generate_embeddings(texts, task_type):
         )
 
     return all_embeddings
+
+
+# -------------------------------------------------
+# QUERY EMBEDDING CACHE
+# -------------------------------------------------
+
+def get_query_embedding(query):
+
+    cache_key = query.strip().lower()
+
+    if not cache_key:
+        return None
+
+    with cache_lock:
+
+        if cache_key in query_cache:
+
+            query_cache.move_to_end(cache_key)
+
+            print("Using cached query embedding.")
+
+            return query_cache[cache_key]
+
+    embeddings = generate_embeddings(
+        [query],
+        "RETRIEVAL_QUERY"
+    )
+
+    if not embeddings:
+        return None
+
+    embedding = embeddings[0]
+
+    with cache_lock:
+
+        query_cache[cache_key] = embedding
+
+        query_cache.move_to_end(cache_key)
+
+        if len(query_cache) > MAX_CACHE_SIZE:
+            query_cache.popitem(last=False)
+
+    return embedding
 
 
 # -------------------------------------------------
@@ -101,7 +234,12 @@ def read_document(file_path):
 
     elif extension == ".txt":
 
-        with open(file_path, "r", encoding="utf-8") as file:
+        with open(
+            file_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
             return file.read()
 
     elif extension == ".csv":
@@ -111,7 +249,10 @@ def read_document(file_path):
         return dataframe.to_string(index=False)
 
     else:
-        raise ValueError("Unsupported file format")
+
+        raise ValueError(
+            "Unsupported file format"
+        )
 
 
 # -------------------------------------------------
@@ -146,10 +287,17 @@ def add_document(file_path):
 
     text = read_document(file_path)
 
+    if not text or not text.strip():
+        return 0
+
     chunks = split_text(text)
 
     if not chunks:
         return 0
+
+    print(
+        f"Generating embeddings for {len(chunks)} chunks..."
+    )
 
     embeddings = generate_embeddings(
         chunks,
@@ -176,6 +324,10 @@ def add_document(file_path):
         metadatas=metadata
     )
 
+    print(
+        f"Successfully stored {len(chunks)} chunks."
+    )
+
     return len(chunks)
 
 
@@ -185,33 +337,50 @@ def add_document(file_path):
 
 def retrieve_documents(query, top_k=3):
 
-    query_embeddings = generate_embeddings(
-        [query],
-        "RETRIEVAL_QUERY"
-    )
+    if not query or not query.strip():
+        return []
 
-    if collection.count() == 0:
+    # Check database before generating embeddings
+    total_documents = collection.count()
+
+    if total_documents == 0:
+        return []
+
+    query_embedding = get_query_embedding(query)
+
+    if query_embedding is None:
         return []
 
     results = collection.query(
-        query_embeddings=query_embeddings,
-        n_results=min(top_k, collection.count())
+        query_embeddings=[query_embedding],
+        n_results=min(top_k, total_documents)
     )
 
     documents = results.get("documents", [[]])[0]
+
     metadata = results.get("metadatas", [[]])[0]
+
     distances = results.get("distances", [[]])[0]
 
     retrieved = []
 
     for document, meta, distance in zip(
-        documents, metadata, distances
+        documents,
+        metadata,
+        distances
     ):
 
         retrieved.append({
+
             "content": document,
-            "source": meta.get("source", "Unknown"),
+
+            "source": (
+                meta.get("source", "Unknown")
+                if meta else "Unknown"
+            ),
+
             "distance": distance
+
         })
 
     return retrieved
