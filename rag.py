@@ -68,26 +68,25 @@ cache_lock = threading.Lock()
 # SAFE GEMINI EMBEDDING REQUEST
 # -------------------------------------------------
 
+
 def safe_embed_content(**kwargs):
 
     global last_request_time
 
-    for attempt in range(MAX_RETRIES):
+    with embedding_lock:
+
+        elapsed = time.time() - last_request_time
+
+        if elapsed < REQUEST_DELAY:
+            time.sleep(REQUEST_DELAY - elapsed)
+
+        last_request_time = time.time()
 
         try:
 
-            with embedding_lock:
-
-                elapsed = time.time() - last_request_time
-
-                if elapsed < REQUEST_DELAY:
-                    time.sleep(REQUEST_DELAY - elapsed)
-
-                last_request_time = time.time()
-
-                response = client.models.embed_content(
-                    **kwargs
-                )
+            response = client.models.embed_content(
+                **kwargs
+            )
 
             return response
 
@@ -100,25 +99,18 @@ def safe_embed_content(**kwargs):
                 or "RESOURCE_EXHAUSTED" in error
             ):
 
-                wait_time = min(
-                    60 * (attempt + 1),
-                    180
-                )
-
                 print(
-                    f"Gemini embedding quota exceeded. "
-                    f"Retrying in {wait_time} seconds. "
-                    f"Attempt {attempt + 1}/{MAX_RETRIES}"
+                    "Gemini embedding quota exceeded. "
+                    "Please retry after the quota resets."
                 )
 
-                time.sleep(wait_time)
+                raise RuntimeError(
+                    "Gemini embedding quota exceeded. "
+                    "Please wait before uploading or asking another question."
+                ) from e
 
-            else:
-                raise
+            raise
 
-    raise RuntimeError(
-        "Gemini embedding quota exceeded after multiple retries."
-    )
 
 
 # -------------------------------------------------
