@@ -1,3 +1,27 @@
+
+async function readServerResponse(response) {
+
+    const text = await response.text();
+
+    let data;
+
+    try {
+        data = JSON.parse(text);
+    } catch {
+        throw new Error(
+            `Server error (${response.status}). Please try again.`
+        );
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            data.error || `Request failed (${response.status})`
+        );
+    }
+
+    return data;
+}
+
 const agentMap = {
     query_understanding: "agent-query",
     retrieval: "agent-retrieval",
@@ -112,12 +136,7 @@ async function sendMessage() {
 
         });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error || "Request failed");
-        }
-
+        const data = await readServerResponse(response);
         updateAgentStatus(data.agents);
 
         addMessage(data.answer, "bot");
@@ -133,7 +152,7 @@ async function sendMessage() {
 
         const analytics = await fetch("/analytics");
 
-        const analyticsData = await analytics.json();
+        const analyticsData = await readServerResponse(analytics);
 
         document.getElementById(
             "totalQueries"
@@ -209,11 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: formData
             });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || "Upload failed");
-            }
+            const data = await readServerResponse(response);
 
             status.textContent =
                 data.message + " (" + data.chunks + " chunks)";
